@@ -1,0 +1,17 @@
+# .NET
+bin/
+obj/
+*.user
+
+# Node
+node_modules/
+.next/
+out/
+
+# Local data
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
