@@ -24,6 +24,12 @@ export function useFlowSubscription({
     const apiEndpoint = apiBaseUrl ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:5000';
 
     let isCancelled = false;
+    let latestRealtimeUpdateMs = Number.NEGATIVE_INFINITY;
+
+    const parseTimestamp = (value: string | undefined) => {
+      const timestamp = Date.parse(value ?? '');
+      return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+    };
 
     const connection = new signalR.HubConnectionBuilder().withUrl(hubEndpoint).withAutomaticReconnect().build();
 
@@ -32,7 +38,9 @@ export function useFlowSubscription({
         const response = await fetch(`${apiEndpoint}/flows/${encodeURIComponent(flowId)}`);
         if (response.ok) {
           const summary = (await response.json()) as FlowSummaryDto;
-          if (!isCancelled) {
+          const summaryUpdatedAtMs = parseTimestamp(summary.updatedAt);
+
+          if (!isCancelled && summaryUpdatedAtMs >= latestRealtimeUpdateMs) {
             onFlowBootstrap(summary);
           }
         }
@@ -42,14 +50,21 @@ export function useFlowSubscription({
     }
 
     connection.on('FlowUpdated', (event: FlowUpdatedEvent) => {
+      latestRealtimeUpdateMs = Math.max(
+        latestRealtimeUpdateMs,
+        parseTimestamp(event.receivedAt),
+        parseTimestamp(event.occurredAt)
+      );
+
       if (event.flowId === flowId) {
         onFlowUpdated(event);
       }
     });
 
-    bootstrap()
-      .then(() => connection.start())
+    connection
+      .start()
       .then(() => connection.invoke('SubscribeFlow', flowId))
+      .then(() => bootstrap())
       .catch((error: unknown) => {
         console.error('Unable to connect to SignalR hub', error);
       });
